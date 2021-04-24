@@ -1,0 +1,20 @@
+﻿<AuthorizeView>
+    <Authorized>
+        Hello, @context.User.Identity.Name
+        <a class="btn btn-primary" href="Identity/Account/Logout">
+            Logout
+        </a>
+    </Authorized>
+    <NotAuthorized>
+        <a class="btn btn-primary" href="Identity/Account/Register">
+            Registration
+        </a>
+        <a class="btn btn-primary" href="Identity/Account/Login">
+            Login
+        </a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+
+}

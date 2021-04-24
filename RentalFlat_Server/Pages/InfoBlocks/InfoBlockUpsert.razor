@@ -1,0 +1,91 @@
+﻿@page "/infoblock/create"
+@page "/infoblock/edit/{Id:int}"
+
+@inject IInfoBlockRepository repository
+@inject NavigationManager navigationManager
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = StaticDetails.Role_Admin)]
+
+<div class="row mt-2 mb-5">
+    <h5 class="card-title mb-3 ml-3">
+        @Title flat
+    </h5>
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <EditForm Model="ModelDTO" OnValidSubmit="UpsertHandler">
+                    <DataAnnotationsValidator />
+                    @*<ValidationSummary />*@
+
+                    <div class="form-group" style="height:300px;">
+                        <label>
+                            Description
+                        </label>
+                        <InputTextArea @bind-Value="ModelDTO.Data" class="form-control" rows="10"></InputTextArea>
+                        <ValidationMessage For="()=>ModelDTO.Data"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group" style="margin-top:90px;">
+                        <button class="btn btn-success">
+                            @Title
+                        </button>
+                        <NavLink href="infoblocklist" class="btn btn-primary">
+                            Back
+                        </NavLink>
+                    </div>
+
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private InfoBlockDTO ModelDTO { get; set; } = new InfoBlockDTO();
+
+    private string Title { get; set; } = "Add";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id != null)
+        {
+            // Update
+            Title = "Update";
+
+            ModelDTO = await repository.Get(Id.Value);
+        }
+        else
+        {
+            //Create
+            ModelDTO = new InfoBlockDTO();
+        }
+    }
+
+    private async Task UpsertHandler()
+    {
+        try
+        {
+            if (ModelDTO.Id != 0 && Title == "Update")
+            {
+                // Update
+                var update = await repository.Update(ModelDTO.Id, ModelDTO);
+                await JSRuntime.ToastrSuccess($"Block updated!");
+            }
+            else
+            {
+                // Create
+                var created = await repository.Create(ModelDTO);
+                await JSRuntime.ToastrSuccess($"Block added!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
+        navigationManager.NavigateTo("infoblocklist");
+    }
+}

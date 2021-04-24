@@ -1,0 +1,140 @@
+﻿@page "/orderlist"
+
+@inject IOrderRepository _orderRepository
+@inject IJSRuntime JsRuntime
+@inject NavigationManager navigationManager
+
+@if (!IsUploadProcessStarted)
+{
+    <div class="mt-5">
+        @*<div class="row mt-4">
+                <div class="col-12">
+                    <table class="table table-bordered table-hover">
+                        <thead>
+                            <tr>
+                                <th>
+                                    ID
+                                </th>
+                                <th>
+                                    Flat
+                                </th>
+                                <th class="text-center">
+                                    Status
+                                </th>
+                                <th class="text-center">
+                                    User
+                                </th>
+                                <th>
+                                    Rental date
+                                </th>
+                                <th>
+                                    Amount
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (IsUploadProcessStarted)
+                            {
+                                <tr>
+                                    <td>
+                                        <i class="fa fa-spin fa-spinner"></i>
+                                        Processing...
+                                    </td>
+                                </tr>
+                            }
+                            @if (Orders.Any())
+                            {
+                                foreach (var model in Orders)
+                                {
+                                    <tr>
+                                        <td>
+                                            @model.Id
+                                        </td>
+                                        <td>
+                                            @model.FlatId
+                                        </td>
+                                        <td>
+                                            @model.Status
+                                        </td>
+                                        <td>
+                                            @model.Name
+                                        </td>
+                                        <td>
+                                            @model.CheckInDate / @model.CheckOutDate
+                                        </td>
+                                        <td>
+                                            @model.TotalCost
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5">No records found</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>*@
+        <h3 class="mb-2">
+            All Orders
+        </h3>
+        <RadzenGrid AllowFiltering="true"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    FilterMode="FilterMode.Advanced" AllowPaging="true" PageSize="10"
+                    AllowSorting="true" Data="@Orders" TItem="OrderDetailsDTO" ColumnWidth="130px">
+
+            <Columns>
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="Id" Title="Order ID" />
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="Name" Title="Customer Name" />
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="Phone" Title="Customer Phone" />
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="Email" Title="Customer Email" />
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="FlatDTO.Name" Title="Flat" />
+
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="CheckInDate" Title="Check in Date">
+                    <Template Context="data">
+                        @String.Format("{0:d}", data.CheckInDate)
+                    </Template>
+                </RadzenGridColumn>
+
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="CheckOutDate" Title="Check Out Date">
+                    <Template Context="data">
+                        @String.Format("{0:d}", data.CheckOutDate)
+                    </Template>
+                </RadzenGridColumn>
+
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="Status" Title="Status" />
+
+                <RadzenGridColumn TItem="OrderDetailsDTO" Property="Id" Title="">
+                    <Template Context="data">
+                        <NavLink class="btn btn-primary" href="@($"order/details/{data.Id}")">Details</NavLink>
+                    </Template>
+                </RadzenGridColumn>
+
+            </Columns>
+
+        </RadzenGrid>
+
+    </div>
+}
+else
+{
+    <div class="spinner">
+
+    </div>
+}
+
+
+@code {
+    private IEnumerable<OrderDetailsDTO> Orders { get; set; } = new List<OrderDetailsDTO>();
+    private bool IsUploadProcessStarted { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsUploadProcessStarted = true;
+        Orders = await _orderRepository.GetAllOrderDetails();
+        IsUploadProcessStarted = false;
+    }
+}

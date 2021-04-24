@@ -1,0 +1,321 @@
+﻿@page "/flat/create"
+@page "/flat/edit/{Id:int}"
+
+@inject IFlatRepository repository
+@inject NavigationManager navigationManager
+@inject IJSRuntime JSRuntime
+@inject IFileUpload fileUpload
+@inject IFlatImagesRepository _flatImgRepository
+@attribute [Authorize(Roles = StaticDetails.Role_Admin)]
+
+<div class="row mt-2 mb-5">
+    <h5 class="card-title mb-3 ml-3">
+        @Title flat
+    </h5>
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <EditForm Model="ModelDTO" OnValidSubmit="UpsertHandler">
+                    <DataAnnotationsValidator />
+                    @*<ValidationSummary />*@
+
+                    <div class="form-group">
+                        <label>
+                            Name
+                        </label>
+                        <InputText @bind-Value="ModelDTO.Name" class="form-control"></InputText>
+                        <ValidationMessage For="()=>ModelDTO.Name"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            Flat area
+                        </label>
+                        <InputText @bind-Value="ModelDTO.FlatArea" class="form-control"></InputText>
+                        <ValidationMessage For="()=>ModelDTO.FlatArea"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            Room count
+                        </label>
+                        <InputNumber @bind-Value="ModelDTO.RoomCount" class="form-control"></InputNumber>
+                        <ValidationMessage For="()=>ModelDTO.RoomCount"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            Description
+                        </label>
+                        <InputTextArea @bind-Value="ModelDTO.Description" class="form-control"></InputTextArea>
+                        <ValidationMessage For="()=>ModelDTO.Description"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            Price
+                        </label>
+                        <InputNumber @bind-Value="ModelDTO.Price" class="form-control"></InputNumber>
+                        <ValidationMessage For="()=>ModelDTO.Price"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group" style="padding-top:80px;">
+                        <InputFile OnChange="HandleImageUpload" multiple></InputFile>
+                        <div class="row">
+                            @if (IsUploadProcessStarted)
+                            {
+                                <div class="col-md-12">
+                                    <span>
+                                        <i class="fa fa-spin fa-spinner"></i>
+                                        Please wait... Images are uploading...
+                                    </span>
+                                </div>
+                            }
+                            @if (ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Count > 0)
+                            {
+                                int count = 1;
+                                foreach (var image in ModelDTO.ImageUrls)
+                                {
+                                    <div class="col-md-2 mt-2">
+                                        <div class="room-image" style="background: url('@image') 50% 50%">
+                                            <span class="room-image-title">
+                                                @count
+                                            </span>
+                                        </div>
+                                        <button @onclick="()=>DeletePhoto(image)" type="button" class="btn btn-danger btn-block mt-3">
+                                            🗙
+                                        </button>
+                                    </div>
+                                    count++;
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+
+                        <button class="btn btn-success">
+                            @Title
+                        </button>
+
+                    </div>
+
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private FlatDTO ModelDTO { get; set; } = new FlatDTO();
+    private string Title { get; set; } = "Add";
+    private bool IsUploadProcessStarted { get; set; } = false;
+    private FlatImageDTO ModelImage { get; set; } = new FlatImageDTO(); //Для работ с изображениями.
+    private List<string> DeletedImageNames { get; set; } = new List<string>(); //Удаляем изображение из БД.
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id != null)
+        {
+            // Update
+            Title = "Update";
+
+            ModelDTO = await repository.Get(Id.Value);
+
+            if (ModelDTO?.FlatImages != null) // Refresh images in DTO model.
+            {
+                ModelDTO.ImageUrls = ModelDTO.FlatImages.Select(x => x.FlatImageUrl).ToList();
+            }
+        }
+        else
+        {
+            //Create
+            ModelDTO = new FlatDTO();
+        }
+    }
+
+    private async Task UpsertHandler()
+    {
+        try
+        {
+            var IsNameUnique = await repository.IsNameUnique(ModelDTO.Name, ModelDTO.Id);
+
+            if (IsNameUnique != null)
+            {
+                await JSRuntime.ToastrError($"Error! This name {ModelDTO.Name} already to use.");
+                return;
+            }
+
+            if (ModelDTO.Id != 0 && Title == "Update")
+            {
+                // Update
+                var update = await repository.Update(ModelDTO.Id, ModelDTO);
+
+                if ((ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any()) || (DeletedImageNames != null && DeletedImageNames.Any()))
+                {
+
+                    if (DeletedImageNames != null && DeletedImageNames.Any())
+                    {
+                        foreach (var deletedImageName in DeletedImageNames)
+                        {
+
+                            var imageName = deletedImageName.Replace($"{navigationManager.BaseUri}flatimages/", ""); // OR ($"flatimages/", "");
+
+                            var result = fileUpload.DeleteFile(imageName);
+
+                            await _flatImgRepository.DeleteImageByUrl(deletedImageName);
+                        }
+                    }
+
+                    if (ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any())
+                    {
+                        await AddImageInModel(update);
+                    }
+                }
+
+                // Original
+                //if ((ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any()) || (DeletedImageNames != null && DeletedImageNames.Any()))
+                //{
+                //    if (DeletedImageNames != null && DeletedImageNames.Any())
+                //    {
+                //        foreach (var deletedImageName in DeletedImageNames)
+                //        {
+                //            var imageName = deletedImageName.Replace($"{navigationManager.BaseUri}RoomImages/", "");
+
+                //            var result = fileUpload.DeleteFile(imageName);
+                //            await _flatImgRepository.DeleteImageByUrl(deletedImageName);
+                //        }
+                //    }
+
+                //    await AddImageInModel(update);
+                //}
+
+                await JSRuntime.ToastrSuccess($"{ModelDTO.Name} updated!");
+            }
+            else
+            {
+                // Create
+                var created = await repository.Create(ModelDTO);
+                await AddImageInModel(created); // Add image.
+                await JSRuntime.ToastrSuccess($"{ModelDTO.Name} added!");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.ToastrError(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+
+        navigationManager.NavigateTo("flatlist");
+    }
+
+
+
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        IsUploadProcessStarted = true;
+
+        try
+        {
+            var images = new List<string>();
+
+            if (e.GetMultipleFiles().Count > 0)
+            {
+                foreach (var file in e.GetMultipleFiles())
+                {
+                    var fileInfo = new System.IO.FileInfo(file.Name);
+
+                    if (fileInfo.Extension.ToLower() == ".jpg" ||
+                       fileInfo.Extension.ToLower() == ".png" ||
+                       fileInfo.Extension.ToLower() == ".jpeg")
+                    {
+                        var uploadImagePath = await fileUpload.UploadFile(file);
+                        images.Add(uploadImagePath);
+                    }
+                    else
+                    {
+                        await JSRuntime.ToastrError("Please select .jpg/ .jpeg/ .png file only.");
+                        return;
+                    }
+                }
+
+                if (images.Any())
+                {
+                    if (ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any())
+                    {
+                        ModelDTO.ImageUrls.AddRange(images);
+                    }
+                    else
+                    {
+                        ModelDTO.ImageUrls = new List<string>();
+                        ModelDTO.ImageUrls.AddRange(images);
+                    }
+                }
+                else
+                {
+                    await JSRuntime.ToastrError("Image uploading failed!");
+                    return;
+                }
+            }
+
+            IsUploadProcessStarted = false;
+
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.ToastrError(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    //Методы для работы с изображениями для модели.
+    private async Task AddImageInModel(FlatDTO model)
+    {
+        foreach (var imageUrl in ModelDTO.ImageUrls)
+        {
+            // Проверка что бы не дублировать уже добавленные изображения из БД. Если FlatImageUrl == imageUrl равны, мы не добавляем ничего.
+            if (ModelDTO.FlatImages == null || ModelDTO.FlatImages.Where(x => x.FlatImageUrl == imageUrl).Count() == 0)
+            {
+                ModelImage = new FlatImageDTO()
+                {
+                    FlatId = model.Id,
+                    FlatImageUrl = imageUrl
+                };
+
+                await _flatImgRepository.CreateFlatImage(ModelImage);
+            }
+        }
+    }
+
+    //Метод удаляет изображение.
+    internal async Task DeletePhoto(string imageUrl)
+    {
+        try
+        {
+            var imageIndex = ModelDTO.ImageUrls.FindIndex(x => x == imageUrl);
+            var imageName = imageUrl.Replace($"{navigationManager.BaseUri}flatimages/", "");
+
+            if (ModelDTO.Id == 0 && Title == "Add")
+            {
+                //Create
+                var result = fileUpload.DeleteFile(imageName); // Удаляем изображение только с папки.
+            }
+            else
+            {
+                //Update
+                DeletedImageNames ??= new List<string>();
+                DeletedImageNames.Add(imageUrl); // Удаляем изображение с БД.
+            }
+
+            ModelDTO.ImageUrls.RemoveAt(imageIndex);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.ToastrError(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+    }
+}

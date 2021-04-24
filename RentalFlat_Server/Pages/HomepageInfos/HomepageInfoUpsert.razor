@@ -1,0 +1,275 @@
+﻿@page "/homepageinfo/create"
+@page "/homepageinfo/edit/{Id:int}"
+
+@inject IHomepageInfoRepository repository
+@inject IImageRepository imageRepository
+@inject NavigationManager navigationManager
+@inject IJSRuntime JSRuntime
+@inject IImageUpload fileUpload
+@attribute [Authorize(Roles = StaticDetails.Role_Admin)]
+
+<div class="row mt-2 mb-5">
+    <h5 class="card-title mb-3 ml-3">
+        @Title flat
+    </h5>
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <EditForm Model="ModelDTO" OnValidSubmit="UpsertHandler">
+                    <DataAnnotationsValidator />
+                    @*<ValidationSummary />*@
+
+                    <div class="form-group">
+                        <label>
+                            Name
+                        </label>
+                        <InputText @bind-Value="ModelDTO.Name" class="form-control"></InputText>
+                        <ValidationMessage For="()=>ModelDTO.Name"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group" style="height:300px;">
+                        <label>
+                            Description
+                        </label>
+                        <InputTextArea @bind-Value="ModelDTO.Info" class="form-control" rows="12"></InputTextArea>
+                        <ValidationMessage For="()=>ModelDTO.Info"></ValidationMessage>
+                    </div>
+
+                    <div class="form-group" style="padding-top:80px;">
+                        <InputFile OnChange="HandleImageUpload"></InputFile>
+                        <div class="row">
+                            @if (IsUploadProcessStarted)
+                            {
+                                <div class="col-md-12">
+                                    <span>
+                                        <i class="fa fa-spin fa-spinner"></i>
+                                        Please wait... Images are uploading...
+                                    </span>
+                                </div>
+                            }
+                            @if (ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Count > 0)
+                            {
+                                int count = 1;
+                                foreach (var image in ModelDTO.ImageUrls)
+                                {
+                                    <div class="col-md-2 mt-2">
+                                        <div class="room-image" style="background: url('@image') 50% 50%">
+                                            <span class="room-image-title">
+                                                @count
+                                            </span>
+                                        </div>
+                                        <button @onclick="()=>DeletePhoto(image)" type="button" class="btn btn-danger btn-block mt-3">
+                                            🗙
+                                        </button>
+                                    </div>
+                                    count++;
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:90px;">
+                        <button class="btn btn-success">
+                            @Title
+                        </button>
+                        <NavLink href="homepageinfoslist" class="btn btn-primary">
+                            Back
+                        </NavLink>
+                    </div>
+
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private HomepageInfoDTO ModelDTO { get; set; } = new HomepageInfoDTO();
+    private bool IsUploadProcessStarted { get; set; } = false;
+    private HomeImageDTO ModelImage { get; set; } = new HomeImageDTO();
+    private List<string> DeletedImageNames { get; set; } = new List<string>(); // Remove images from DB.
+
+    private string Title { get; set; } = "Add";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id != null)
+        {
+            // Update
+            Title = "Update";
+
+            ModelDTO = await repository.Get(Id.Value);
+
+            if (ModelDTO?.Images != null) // Update model images.
+            {
+                ModelDTO.ImageUrls = ModelDTO.Images.Select(x => x.ImageUrl).ToList();
+            }
+        }
+        else
+        {
+            //Create
+            ModelDTO = new HomepageInfoDTO();
+        }
+    }
+
+    private async Task UpsertHandler()
+    {
+        try
+        {
+            if (ModelDTO.Id != 0 && Title == "Update")
+            {
+                // Update
+                var update = await repository.Update(ModelDTO.Id, ModelDTO);
+
+                if ((ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any()) || (DeletedImageNames != null && DeletedImageNames.Any()))
+                {
+
+                    if (DeletedImageNames != null && DeletedImageNames.Any())
+                    {
+                        foreach (var deletedImageName in DeletedImageNames)
+                        {
+
+                            var imageName = deletedImageName.Replace($"{navigationManager.BaseUri}homeimages/", "");
+
+                            var result = fileUpload.DeleteImage(imageName);
+
+                            await imageRepository.DeleteImageByUrl(deletedImageName);
+                        }
+                    }
+
+                    if (ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any())
+                    {
+                        await AddImageInModel(update);
+                    }
+                }
+
+                await JSRuntime.ToastrSuccess($"{ModelDTO.Name} updated!");
+            }
+            else
+            {
+                // Create
+                var created = await repository.Create(ModelDTO);
+                await AddImageInModel(created); //Создаем изображения.
+                await JSRuntime.ToastrSuccess($"{ModelDTO.Name} added!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
+        navigationManager.NavigateTo("homepageinfoslist");
+    }
+
+    #region Image upload logic
+
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        IsUploadProcessStarted = true;
+
+        try
+        {
+            var images = new List<string>();
+
+            if (e.GetMultipleFiles().Count > 0)
+            {
+                foreach (var file in e.GetMultipleFiles())
+                {
+                    var fileInfo = new System.IO.FileInfo(file.Name);
+
+                    if (fileInfo.Extension.ToLower() == ".jpg" ||
+                       fileInfo.Extension.ToLower() == ".png" ||
+                       fileInfo.Extension.ToLower() == ".jpeg")
+                    {
+                        var uploadImagePath = await fileUpload.UploadImage(file);
+                        images.Add(uploadImagePath);
+                    }
+                    else
+                    {
+                        await JSRuntime.ToastrError("Please select .jpg/ .jpeg/ .png file only.");
+                        return;
+                    }
+                }
+
+                if (images.Any())
+                {
+                    if (ModelDTO.ImageUrls != null && ModelDTO.ImageUrls.Any())
+                    {
+                        ModelDTO.ImageUrls.AddRange(images);
+                    }
+                    else
+                    {
+                        ModelDTO.ImageUrls = new List<string>();
+                        ModelDTO.ImageUrls.AddRange(images);
+                    }
+                }
+                else
+                {
+                    await JSRuntime.ToastrError("Image uploading failed!");
+                    return;
+                }
+            }
+
+            IsUploadProcessStarted = false;
+
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.ToastrError(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    //Методы для работы с изображениями для модели.
+    private async Task AddImageInModel(HomepageInfoDTO model)
+    {
+        foreach (var imageUrl in ModelDTO.ImageUrls)
+        {
+            // Проверка что бы не дублировать уже добавленные изображения из БД. Если ImageUrl == imageUrl равны, мы не добавляем ничего.
+            if (ModelDTO.Images == null || ModelDTO.Images.Where(x => x.ImageUrl == imageUrl).Count() == 0)
+            {
+                ModelImage = new HomeImageDTO()
+                {
+                    HomepageInfoId = model.Id,
+                    ImageUrl = imageUrl
+                };
+
+                await imageRepository.CreateImage(ModelImage);
+            }
+        }
+    }
+
+    //Метод удаляет изображение.
+    internal async Task DeletePhoto(string imageUrl)
+    {
+        try
+        {
+            var imageIndex = ModelDTO.ImageUrls.FindIndex(x => x == imageUrl);
+            var imageName = imageUrl.Replace($"{navigationManager.BaseUri}homeimages/", "");
+
+            if (ModelDTO.Id == 0 && Title == "Add")
+            {
+                //Create
+                var result = fileUpload.DeleteImage(imageName); // Remove image from folder.
+            }
+            else
+            {
+                //Update
+                DeletedImageNames ??= new List<string>();
+                DeletedImageNames.Add(imageUrl); // Remove image from DB.
+            }
+
+            ModelDTO.ImageUrls.RemoveAt(imageIndex);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.ToastrError(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+    }
+    #endregion
+}
+

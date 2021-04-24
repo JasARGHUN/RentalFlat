@@ -1,0 +1,83 @@
+﻿@page "/infoblocklist"
+
+@inject IInfoBlockRepository repository
+@inject IJSRuntime JSRuntime
+@inject NavigationManager navigationManager
+@attribute [Authorize(Roles = StaticDetails.Role_Admin)]
+
+<div class="row mt-4">
+    <div class="col-8">
+        <h5 class="card-title">
+            Informations list
+        </h5>
+    </div>
+    <div class="col-3 offset-1">
+        <NavLink href="infoblock/create" class="btn btn-info form-control">
+            Add new info
+        </NavLink>
+    </div>
+</div>
+
+<RadzenDataList WrapItems="true" AllowPaging="true" PageSize="2" Data="@ModelList" TItem="InfoBlockDTO">
+    <Template Context="ModelList">
+        <RadzenCard Style="width:300px;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div>Block name:</div>
+                    <b>@ModelList.Id</b>
+                    <br />
+                </div>
+                <div class="col-md-6">
+                    <div>Description:</div>
+                    <b>@(ModelList.Data)</b>
+                </div>
+                <div class="ml-3 mt-3">
+                    <a class="btn btn-warning" href=@($"infoblock/edit/{ModelList.Id}")>
+                        Edit
+                    </a>
+                    <button class="btn btn-danger" @onclick="()=>HandleDelete(ModelList.Id)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+        </RadzenCard>
+    </Template>
+</RadzenDataList>
+
+<DeleteConfirmation IsParentComponentProcessing="IsProcessing" ConfirmationChanged="ConfirmDelete_Click"></DeleteConfirmation>
+
+@code {
+    private IEnumerable<InfoBlockDTO> ModelList { get; set; } = new List<InfoBlockDTO>();
+    private int? DeleteModelId { get; set; } = null;
+    private bool IsProcessing { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ModelList = await repository.GetAll();
+    }
+
+    private async Task HandleDelete(int id)
+    {
+        DeleteModelId = id;
+        await JSRuntime.InvokeVoidAsync("ShowDeleteConfirmationModal");
+    }
+
+    public async Task ConfirmDelete_Click(bool isConfirmed)
+    {
+        IsProcessing = true;
+
+        if (isConfirmed && DeleteModelId != null)
+        {
+            await repository.Delete(DeleteModelId.Value);
+
+            await JSRuntime.ToastrSuccess("Object deleted successfully");
+
+            ModelList = await repository.GetAll();
+        }
+
+        await JSRuntime.InvokeVoidAsync("HideDeleteConfirmationModal");
+        navigationManager.NavigateTo("infoblocklist", true); // Reload page after delete
+        IsProcessing = false;
+    }
+}

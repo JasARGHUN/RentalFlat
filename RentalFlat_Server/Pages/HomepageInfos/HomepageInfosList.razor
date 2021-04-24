@@ -1,0 +1,139 @@
+﻿@page "/homepageinfoslist"
+
+@inject IHomepageInfoRepository repository
+@inject IJSRuntime JSRuntime
+@inject NavigationManager navigationManager
+@inject IImageUpload fileUpload
+@attribute [Authorize(Roles = StaticDetails.Role_Admin)]
+
+<div class="row mt-4">
+    <div class="col-8">
+        <h5 class="card-title">
+            Informations list
+        </h5>
+    </div>
+    <div class="col-3 offset-1">
+        <NavLink href="homepageinfo/create" class="btn btn-info form-control">
+            Add new info
+        </NavLink>
+    </div>
+</div>
+
+@*<div class="row mt-4">
+        <div class="col-12">
+            <table class="table table-bordered table-hover">
+                <thead>
+                    <tr>
+                        <th>
+                            Name
+                        </th>
+                        <th>
+
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (ModelList.Any())
+                    {
+                        @foreach (var item in ModelList)
+                        {
+                            <tr>
+                                <td>
+                                    @item.Name
+                                </td>
+                                <td>
+                                    <a class="btn btn-warning" href=@($"homepageinfo/edit/{@item.Id}")>
+                                        Edit
+                                    </a>
+                                    <button class="btn btn-danger" @onclick="()=>HandleDelete(item.Id)">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="5">
+                                Nor records found
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>*@
+
+<RadzenDataList WrapItems="true" AllowPaging="true" PageSize="12" Data="@ModelList" TItem="HomepageInfoDTO">
+    <Template Context="ModelList">
+        <RadzenCard Style="width:300px;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div>Block name:</div>
+                    <b>@ModelList.Name</b>
+                    <br />
+                    @*<RadzenImage Path="@order.Employee?.Photo" Style="width:100px;" />*@
+                </div>
+                <div class="col-md-6">
+                    <div>Description:</div>
+                    <b>@(ModelList.Info)</b>
+                </div>
+                <div class="ml-3 mt-3">
+                    <a class="btn btn-warning" href=@($"homepageinfo/edit/{ModelList.Id}")>
+                        Edit
+                    </a>
+                    <button class="btn btn-danger" @onclick="()=>HandleDelete(ModelList.Id)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+        </RadzenCard>
+    </Template>
+</RadzenDataList>
+
+<DeleteConfirmation IsParentComponentProcessing="IsProcessing" ConfirmationChanged="ConfirmDelete_Click"></DeleteConfirmation>
+
+@code {
+    private IEnumerable<HomepageInfoDTO> ModelList { get; set; } = new List<HomepageInfoDTO>();
+    private int? DeleteModelId { get; set; } = null;
+    private bool IsProcessing { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ModelList = await repository.GetAll();
+    }
+
+    private async Task HandleDelete(int id)
+    {
+        DeleteModelId = id;
+        await JSRuntime.InvokeVoidAsync("ShowDeleteConfirmationModal");
+    }
+
+    public async Task ConfirmDelete_Click(bool isConfirmed)
+    {
+        IsProcessing = true;
+
+        if (isConfirmed && DeleteModelId != null)
+        {
+            var model = await repository.Get(DeleteModelId.Value);
+
+            foreach (var image in model.Images)
+            {
+                var imageName = image.ImageUrl.Replace($"{navigationManager.BaseUri}homeimages/", "");
+                fileUpload.DeleteImage(imageName);
+            }
+
+            await repository.Delete(DeleteModelId.Value);
+
+            await JSRuntime.ToastrSuccess("Object deleted successfully");
+
+            ModelList = await repository.GetAll();
+        }
+
+        await JSRuntime.InvokeVoidAsync("HideDeleteConfirmationModal");
+        navigationManager.NavigateTo("homepageinfoslist", true); // Reload page after delete
+        IsProcessing = false;
+    }
+}

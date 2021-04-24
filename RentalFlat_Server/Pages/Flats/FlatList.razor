@@ -1,0 +1,177 @@
+﻿@page "/flatlist"
+
+@inject IFlatRepository repository
+@inject IJSRuntime JSRuntime
+@inject NavigationManager navigationManager
+@inject IFileUpload fileUpload
+@attribute [Authorize(Roles = StaticDetails.Role_Admin)]
+
+@if (ModelList == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="row mt-4">
+        <div class="col-8">
+            <h5 class="card-title">
+                Flats list
+            </h5>
+        </div>
+        <div class="col-3 offset-1">
+            <NavLink href="flat/create" class="btn btn-info form-control">
+                Add new flat
+            </NavLink>
+        </div>
+    </div>
+
+    @*<div class="row mt-4">
+        <div class="col-12">
+            <table class="table table-bordered table-hover">
+                <thead>
+                    <tr>
+                        <th>
+                            Name
+                        </th>
+                        <th>
+                            Rooms
+                        </th>
+                        <th>
+                            Flat area
+                        </th>
+                        <th>
+                            Price
+                        </th>
+                        <th>
+
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (ModelList.Any())
+                    {
+                        @foreach (var item in ModelList)
+                        {
+                            <tr>
+                                <td>
+                                    @item.Name
+                                </td>
+                                <td>
+                                    @item.RoomCount
+                                </td>
+                                <td>
+                                    @item.FlatArea
+                                </td>
+                                <td>
+                                    @item.Price
+                                </td>
+                                <td>
+                                    <a class="btn btn-warning" href="@($"flat/edit/{item.Id}")">
+                                        Edit
+                                    </a>
+                                    <button class="btn btn-danger" @onclick="()=>HandleDelete(item.Id)">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="5">
+                                Nor records found
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>*@
+}
+
+<RadzenDataList WrapItems="true" AllowPaging="true" PageSize="5" Data="@ModelList" TItem="FlatDTO">
+    <Template Context="ModelList">
+        <RadzenCard Style="width:300px;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div>
+                        <h4 class="text-danger">
+                            Flat name:
+                        </h4>
+                    </div>
+                    <b>@ModelList.Name</b>
+                    <br />
+                </div>
+                <div class="col-md-6">
+                    <div>
+                        <h4 class="text-danger">
+                            Description:
+                        </h4>
+                    </div>
+                    <b>Flat area: @(ModelList.FlatArea)</b>
+                    <br />
+                    <b>Room count: @(ModelList.RoomCount)</b>
+                    <br />
+                    <b>Price per day: @(ModelList.Price)</b>
+                </div>
+                <div class="ml-3 mt-3">
+                    <a class="btn btn-warning" href="@($"flat/edit/{ModelList.Id}")">
+                        Edit
+                    </a>
+                    <button class="btn btn-danger" @onclick="()=>HandleDelete(ModelList.Id)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+        </RadzenCard>
+    </Template>
+</RadzenDataList>
+
+<DeleteConfirmation IsParentComponentProcessing="IsProcessing" ConfirmationChanged="ConfirmDelete_Click"></DeleteConfirmation>
+
+@code {
+    private IEnumerable<FlatDTO> ModelList { get; set; } = new List<FlatDTO>();
+    private int? DeleteModelId { get; set; } = null;
+    private bool IsProcessing { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ModelList = await repository.GetAll();
+    }
+
+    private async Task HandleDelete(int id)
+    {
+        DeleteModelId = id;
+        await JSRuntime.InvokeVoidAsync("ShowDeleteConfirmationModal");
+    }
+
+    public async Task ConfirmDelete_Click(bool isConfirmed)
+    {
+        IsProcessing = true;
+
+        if (isConfirmed && DeleteModelId != null)
+        {
+            var model = await repository.Get(DeleteModelId.Value);
+
+            foreach (var image in model.FlatImages)
+            {
+                var imageName = image.FlatImageUrl.Replace($"{navigationManager.BaseUri}flatimages/", "");
+                fileUpload.DeleteFile(imageName);
+            }
+
+            await repository.Delete(DeleteModelId.Value);
+
+            await JSRuntime.ToastrSuccess("Object deleted successfully");
+
+            ModelList = await repository.GetAll();
+        }
+
+        await JSRuntime.InvokeVoidAsync("HideDeleteConfirmationModal");
+
+        navigationManager.NavigateTo("flatlist", true); // Reload page after delete
+
+        IsProcessing = false;
+    }
+}
